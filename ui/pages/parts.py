@@ -96,10 +96,12 @@ def render_part_page():
         state['total'] = total
         page_label.set_text(f'第 {state["page"]} / {max(1, (total + 19) // 20)} 页 (共 {total} 条)')
         
-        rows = [{'料号': r.part_number, '名称': r.part_name, '描述': getattr(r, 'description', '')} for r in records]
+        # 增加序号
+        rows = [{'序号': (state['page'] - 1) * state['size'] + i + 1, '料号': r.part_number, '名称': r.part_name, '描述': getattr(r, 'description', '')} for i, r in enumerate(records)]
         
         with table_container:
             ui.table(columns=[
+                {'name': '序号', 'label': '序号', 'field': '序号', 'align': 'center'},
                 {'name': '料号', 'label': '物料料号', 'field': '料号', 'align': 'left'},
                 {'name': '名称', 'label': '物料名称', 'field': '名称', 'align': 'left'},
                 {'name': '描述', 'label': '物料描述', 'field': '描述', 'align': 'left'},
