@@ -64,8 +64,8 @@ def show_add_bom_dialog(refresh_callback):
                 with ui.row().classes("w-full items-center gap-2 flex-nowrap") as row:
                     ui.input("子件料号",
                              value=data.get("子件料号", "") if data else "").classes("flex-grow")
-                    ui.number("基础用量",
-                              value=data.get("基础用量", 1) if data else 1).classes("w-24")
+                    # 移除 validation，统一高度，完美对齐
+                    ui.input("基础用量", value="" if not data else str(data.get("基础用量", ""))).classes("w-24")
                     ui.space()
                     ui.button(icon="delete", on_click=row.delete).props("flat color=red")
 
@@ -98,13 +98,19 @@ def show_add_bom_dialog(refresh_callback):
             valid_items = []
             for row in items_ui.default_slot.children:
                 inputs = row.default_slot.children
-                if len(inputs) >= 2 and inputs[0].value and inputs[1].value and inputs[1].value > 0:
-                    valid_items.append({
-                        "part_number": inputs[0].value,
-                        "qty_per_board": float(inputs[1].value),
-                    })
+                if len(inputs) >= 2 and inputs[0].value:
+                    try:
+                        qty_val = float(inputs[1].value) if inputs[1].value else 0.0
+                    except ValueError:
+                        return ui.notify("基础用量必须是有效的数字", type="warning")
+
+                    if qty_val > 0:
+                        valid_items.append({
+                            "part_number": inputs[0].value,
+                            "qty_per_board": qty_val,
+                        })
             if not valid_items:
-                return ui.notify("请至少添加一条有效的子件明细", type="warning")
+                return ui.notify("请至少添加一条有效的子件明细（用量需大于0）", type="warning")
             try:
                 create_bom_with_details(prod_no.value, prod_name.value,
                                         version.value, valid_items)
@@ -194,8 +200,8 @@ def show_wo_dialog(refresh_callback, wo_data=None):
             prod_name_input = ui.input("成品名称", value=wo_data.product_name) \
                 .props("readonly").classes("w-full")
 
-        plan_qty = ui.number("计划数量",
-                             value=wo_data.plan_qty if wo_data else 1000).classes("w-full")
+        plan_qty = ui.input("计划数量", value=str(wo_data.plan_qty) if wo_data else "").classes("w-full")
+            
         produce_date = ui.input("计划生产日期",
                                 value=wo_data.produce_date if wo_data else "") \
             .classes("w-full").props("type=date")
@@ -224,8 +230,16 @@ def show_wo_dialog(refresh_callback, wo_data=None):
 
         def save():
             try:
+                plan_qty_val = int(plan_qty.value) if plan_qty.value else 0
+            except ValueError:
+                return ui.notify("计划数量必须是有效的数字", type="warning")
+
+            if plan_qty_val <= 0:
+                return ui.notify("计划数量必须大于0", type="warning")
+
+            try:
                 if wo_data:
-                    update_wo(wo_no.value, line.value, plan_qty.value,
+                    update_wo(wo_no.value, line.value, plan_qty_val,
                               produce_date.value, status.value)
                 else:
                     if not bom_select.value:
@@ -233,7 +247,7 @@ def show_wo_dialog(refresh_callback, wo_data=None):
                     create_wo_with_snapshot(
                         wo_no.value, line.value,
                         prod_no_input.value, prod_name_input.value,
-                        plan_qty.value, produce_date.value,
+                        plan_qty_val, produce_date.value,
                         bom_select.value, status.value,
                     )
                 ui.notify("操作成功", type="positive")
@@ -263,8 +277,8 @@ def _show_transaction_dialog(refresh_callback, title, label, btn_text,
                     ui.input("物料料号",
                              value=data.get("物料料号", "") if data else "") \
                         .classes("w-48")
-                    ui.number("数量",
-                              value=data.get("物料数量", default_qty) if data else default_qty) \
+                    # 同样移除 validation
+                    ui.input("数量", value="" if not data else str(data.get("物料数量", ""))) \
                         .classes("w-24")
                     ui.input("工单号",
                              value=data.get("工单号", "") if data else "") \
@@ -308,18 +322,20 @@ def _show_transaction_dialog(refresh_callback, title, label, btn_text,
             valid = []
             for r in items_ui.default_slot.children:
                 inputs = r.default_slot.children
-                if (len(inputs) >= 3
-                        and inputs[0].value
-                        and inputs[1].value
-                        and inputs[1].value > 0
-                        and inputs[2].value):
-                    valid.append({
-                        "part_number": inputs[0].value,
-                        qty_key: int(inputs[1].value),
-                        "wo_number": inputs[2].value,
-                    })
+                if len(inputs) >= 3 and inputs[0].value and inputs[2].value:
+                    try:
+                        qty_val = int(inputs[1].value) if inputs[1].value else 0
+                    except ValueError:
+                        return ui.notify("数量必须是有效的整数", type="warning")
+
+                    if qty_val > 0:
+                        valid.append({
+                            "part_number": inputs[0].value,
+                            qty_key: qty_val,
+                            "wo_number": inputs[2].value,
+                        })
             if not valid:
-                return ui.notify("请填写完整明细（含工单号）", type="warning")
+                return ui.notify("请填写完整明细（含有效数量与工单号）", type="warning")
             try:
                 submit_func(operator.value, valid)
                 ui.notify(f"{label}成功", type="positive")
@@ -365,7 +381,8 @@ def show_finish_dialog(refresh_callback):
         wo_select = ui.select(wo_options, label="选择工单(必填)").classes("w-full")
         prod_no = ui.input("成品料号").props("readonly").classes("w-full")
         prod_name = ui.input("成品名称").props("readonly").classes("w-full")
-        qty = ui.number("本次入库数量", value=10).classes("w-full")
+        
+        qty = ui.input("本次入库数量", value="").classes("w-full")
         operator = ui.input("入库人", value="操作员A").classes("w-full")
 
         def on_wo_change():
@@ -379,9 +396,18 @@ def show_finish_dialog(refresh_callback):
         def save():
             if not wo_select.value:
                 return ui.notify("请选择工单", type="warning")
+            
+            try:
+                qty_val = int(qty.value) if qty.value else 0
+            except ValueError:
+                return ui.notify("入库数量必须是有效的整数", type="warning")
+                
+            if qty_val <= 0:
+                return ui.notify("请输入有效的入库数量", type="warning")
+
             try:
                 submit_finish(wo_select.value, prod_no.value,
-                              prod_name.value, int(qty.value), operator.value)
+                              prod_name.value, qty_val, operator.value)
                 ui.notify("入库成功", type="positive")
                 dialog.close()
                 refresh_callback()
